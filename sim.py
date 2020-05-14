@@ -402,7 +402,7 @@ class supplychain_sim:
             self.storage_factory[
                 self.week_counter, self.ABQ]
 
-        return self.storage_retailer[:36], self.storage_wholesaler[:36], self.storage_distributor[:36], self.storage_factory[:36]
+        return self.storage_retailer[:35], self.storage_wholesaler[:35], self.storage_distributor[:35], self.storage_factory[:35]
 
 
 default_demand = [15, 10, 8, 14, 9, 3, 13, 2, 13, 11, 3, 4, 6, 11, 15, 12, 15, 4, 12, 3, 13, 10, 15, 15, 3, 11, 1, 13,
@@ -430,4 +430,4 @@ for prediction in pred:
     sim.step_one_week(prediction)
 
 print(["RBQ", "RQ", "PI", "BI", "ABQ", "ID", "ED", "AQ", "EI", "OOQ", "OQ", "BO", "LEAD_TIME"])
-print(sim.storage_retailer)
+print(sim.storage_retailer[:35])
