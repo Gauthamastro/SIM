@@ -74,14 +74,14 @@ class supplychain_sim:
 
     def reset(self, demand, leadTime):
         # First Week Conditions
-        if len(demand)!= 40:
+        if len(demand) != 40:
             appendArray = [0]
-            for i in range(39-len(demand)):
+            for i in range(39 - len(demand)):
                 appendArray.append(0)
             demand = np.append(demand, appendArray)
-        if len(leadTime)!= 40:
+        if len(leadTime) != 40:
             appendArray_ = [0]
-            for i in range(39-len(leadTime)):
+            for i in range(39 - len(leadTime)):
                 appendArray_.append(0)
             leadTime = np.append(leadTime, appendArray_)
         # ORDER_LEAD_TIME
@@ -207,26 +207,227 @@ class supplychain_sim:
 
     def step_one_week(self, predictions):
         self.week_counter += 1
-        print("Current Week", self.week_counter + 1)
+        print("Current Week", self.week_counter)
         assert (len(predictions) == 4)
         # predictions = np.round(predictions)
 
+        # Factory
+        # OQ
+        self.storage_factory[self.week_counter - 1, self.OQ] = predictions[3]
+        # OOQ
+        if self.week_counter == 1:
+            self.storage_factory[self.week_counter, self.OOQ] = 4 + self.storage_factory[self.week_counter - 1, self.OQ]
+
+        # OOQ for future Weeks (if any)
+        for i in range(0, int(self.storage_retailer[self.week_counter - 1, self.DEL_LEAD_TIME]), 1):
+            if self.week_counter + i == 1:
+                continue
+            self.storage_factory[self.week_counter + i, self.OOQ] = self.storage_factory[
+                                                                        self.week_counter + i, self.OOQ] + \
+                                                                    self.storage_factory[self.week_counter - 1, self.OQ]
+        # ID
+        self.storage_factory[self.week_counter + self.order_lead_time, self.ID] = predictions[2]
+        # RQ (special case for 2nd week) modifying current week only if it's week 2
+        if self.week_counter == 1:
+            self.storage_factory[self.week_counter, self.RQ] = 4 + self.storage_factory[self.week_counter, self.RQ]
+
+        # PI
+        self.storage_factory[self.week_counter, self.PI] = self.storage_factory[self.week_counter - 1, self.EI]
+        # ED
+        self.storage_factory[self.week_counter, self.ED] = calculateED(self.alpha,
+                                                                       self.storage_factory[
+                                                                           self.week_counter, self.ID],
+                                                                       self.storage_factory[
+                                                                           self.week_counter - 1, self.ED])
+        # BI
+        self.storage_factory[self.week_counter, self.BI] = calculateBI(
+            self.storage_factory[self.week_counter, self.RBQ],
+            self.storage_factory[self.week_counter, self.RQ],
+            self.storage_factory[self.week_counter, self.PI])
+        # ABQ
+        self.storage_factory[self.week_counter, self.ABQ] = calculateABQ(
+            self.storage_factory[self.week_counter, self.BI],
+            self.storage_factory[self.week_counter, self.PI])
+        # AQ
+        self.storage_factory[self.week_counter, self.AQ] = calculateAQ(
+            self.storage_factory[self.week_counter, self.ID],
+            self.storage_factory[self.week_counter, self.BI],
+            self.storage_factory[self.week_counter, self.ABQ])
+        # RQ from Factory for future weeks
+        self.storage_distributor[
+            self.week_counter + int(self.storage_retailer[self.week_counter - 1, self.DEL_LEAD_TIME]), self.RQ] = \
+            self.storage_distributor[
+                self.week_counter + int(self.storage_retailer[self.week_counter - 1, self.DEL_LEAD_TIME]), self.RQ] + \
+            self.storage_factory[
+                self.week_counter, self.AQ]
+        # RBQ from factory for future weeks
+        self.storage_distributor[
+            self.week_counter + int(self.storage_retailer[self.week_counter - 1, self.DEL_LEAD_TIME]), self.RBQ] = \
+            self.storage_distributor[
+                self.week_counter + int(self.storage_retailer[self.week_counter - 1, self.DEL_LEAD_TIME]), self.RBQ] + \
+            self.storage_factory[
+                self.week_counter, self.ABQ]
+        # EI
+        self.storage_factory[self.week_counter, self.EI] = calculateEI(
+            self.storage_factory[self.week_counter, self.RBQ],
+            self.storage_factory[self.week_counter, self.RQ],
+            self.storage_factory[self.week_counter, self.PI],
+            self.storage_factory[self.week_counter, self.ID])
+        # BO
+        self.storage_factory[self.week_counter, self.BO] = calculateBO(
+            self.storage_factory[self.week_counter, self.EI])
+
+        # Distributor
+        # OQ
+        self.storage_distributor[self.week_counter - 1, self.OQ] = predictions[2]
+        # OOQ
+        if self.week_counter == 1:
+            self.storage_distributor[self.week_counter, self.OOQ] = 4 + self.storage_distributor[
+                self.week_counter - 1, self.OQ]
+        # OOQ for future weeks
+        for i in range(0, int(self.storage_retailer[self.week_counter - 1, self.DEL_LEAD_TIME]), 1):
+            if self.week_counter + i == 1:
+                continue
+            self.storage_distributor[self.week_counter + i, self.OOQ] = self.storage_distributor[
+                                                                            self.week_counter + i, self.OOQ] + \
+                                                                        self.storage_distributor[
+                                                                            self.week_counter - 1, self.OQ]
+        # ID
+        self.storage_distributor[self.week_counter + self.order_lead_time, self.ID] = predictions[1]
+
+        # RQ (special case for 2nd week) modifying current week only if it's week 2
+        if self.week_counter == 1:
+            self.storage_distributor[self.week_counter, self.RQ] = 4 + self.storage_distributor[
+                self.week_counter, self.RQ]
+
+        # PI
+        self.storage_distributor[self.week_counter, self.PI] = self.storage_distributor[self.week_counter - 1, self.EI]
+        # ED
+        self.storage_distributor[self.week_counter, self.ED] = calculateED(self.alpha,
+                                                                           self.storage_distributor[
+                                                                               self.week_counter, self.ID],
+                                                                           self.storage_distributor[
+                                                                               self.week_counter - 1, self.ED])
+        # BI
+        self.storage_distributor[self.week_counter, self.BI] = calculateBI(
+            self.storage_distributor[self.week_counter, self.RBQ],
+            self.storage_distributor[self.week_counter, self.RQ],
+            self.storage_distributor[self.week_counter, self.PI])
+
+        # ABQ
+        self.storage_distributor[self.week_counter, self.ABQ] = calculateABQ(
+            self.storage_distributor[self.week_counter, self.BI],
+            self.storage_distributor[self.week_counter, self.PI])
+
+        # AQ
+        self.storage_distributor[self.week_counter, self.AQ] = calculateAQ(
+            self.storage_distributor[self.week_counter, self.ID],
+            self.storage_distributor[self.week_counter, self.BI],
+            self.storage_distributor[self.week_counter, self.ABQ])
+        # RQ from Factory for future weeks
+        self.storage_wholesaler[
+            self.week_counter + int(self.storage_retailer[self.week_counter - 1, self.DEL_LEAD_TIME]), self.RQ] = \
+            self.storage_wholesaler[
+                self.week_counter + int(self.storage_retailer[self.week_counter - 1, self.DEL_LEAD_TIME]), self.RQ] + \
+            self.storage_distributor[
+                self.week_counter, self.AQ]
+        # RBQ from factory for future weeks
+        self.storage_wholesaler[
+            self.week_counter + int(self.storage_retailer[self.week_counter - 1, self.DEL_LEAD_TIME]), self.RBQ] = \
+            self.storage_wholesaler[
+                self.week_counter + int(self.storage_retailer[self.week_counter - 1, self.DEL_LEAD_TIME]), self.RBQ] + \
+            self.storage_distributor[
+                self.week_counter, self.ABQ]
+
+        # EI
+        self.storage_distributor[self.week_counter, self.EI] = calculateEI(
+            self.storage_distributor[self.week_counter, self.RBQ],
+            self.storage_distributor[self.week_counter, self.RQ],
+            self.storage_distributor[self.week_counter, self.PI],
+            self.storage_distributor[self.week_counter, self.ID])
+        # BO
+        self.storage_distributor[self.week_counter, self.BO] = calculateBO(
+            self.storage_distributor[self.week_counter, self.EI])
+
+        # Wholesaler
+        # OQ
+        self.storage_wholesaler[self.week_counter - 1, self.OQ] = predictions[1]
+        # OOQ
+        if self.week_counter == 1:
+            self.storage_wholesaler[self.week_counter, self.OOQ] = 4 + self.storage_wholesaler[
+                self.week_counter - 1, self.OQ]
+        # OOQ for future weeks
+        for i in range(0, int(self.storage_retailer[self.week_counter - 1, self.DEL_LEAD_TIME]), 1):
+            if self.week_counter + i == 1:
+                continue
+            self.storage_wholesaler[self.week_counter + i, self.OOQ] = self.storage_wholesaler[
+                                                                           self.week_counter + i, self.OOQ] + \
+                                                                       self.storage_wholesaler[
+                                                                           self.week_counter - 1, self.OQ]
+        # ID
+        self.storage_wholesaler[self.week_counter + self.order_lead_time, self.ID] = predictions[0]
+        # RQ (special case for 2nd week) modifying current week only if it's week 2
+        if self.week_counter == 1:
+            self.storage_wholesaler[self.week_counter, self.RQ] = 4 + self.storage_wholesaler[
+                self.week_counter, self.RQ]
+
+        # PI
+        self.storage_wholesaler[self.week_counter, self.PI] = self.storage_wholesaler[self.week_counter - 1, self.EI]
+        # ED
+        self.storage_wholesaler[self.week_counter, self.ED] = calculateED(self.alpha,
+                                                                          self.storage_wholesaler[
+                                                                              self.week_counter, self.ID],
+                                                                          self.storage_wholesaler[
+                                                                              self.week_counter - 1, self.ED])
+        # BI
+        self.storage_wholesaler[self.week_counter, self.BI] = calculateBI(
+            self.storage_wholesaler[self.week_counter, self.RBQ],
+            self.storage_wholesaler[self.week_counter, self.RQ],
+            self.storage_wholesaler[self.week_counter, self.PI])
+
+        # ABQ
+        self.storage_wholesaler[self.week_counter, self.ABQ] = calculateABQ(
+            self.storage_wholesaler[self.week_counter, self.BI],
+            self.storage_wholesaler[self.week_counter, self.PI])
+
+        # AQ
+        self.storage_wholesaler[self.week_counter, self.AQ] = calculateAQ(
+            self.storage_wholesaler[self.week_counter, self.ID],
+            self.storage_wholesaler[self.week_counter, self.BI],
+            self.storage_wholesaler[self.week_counter, self.ABQ])
+        # RQ from Factory for future weeks
+        self.storage_retailer[
+            self.week_counter + int(self.storage_retailer[self.week_counter - 1, self.DEL_LEAD_TIME]), self.RQ] = \
+            self.storage_retailer[
+                self.week_counter + int(self.storage_retailer[self.week_counter - 1, self.DEL_LEAD_TIME]), self.RQ] + \
+            self.storage_wholesaler[
+                self.week_counter, self.AQ]
+        # RBQ from factory for future weeks
+        self.storage_retailer[
+            self.week_counter + int(self.storage_retailer[self.week_counter - 1, self.DEL_LEAD_TIME]), self.RBQ] = \
+            self.storage_retailer[
+                self.week_counter + int(self.storage_retailer[self.week_counter - 1, self.DEL_LEAD_TIME]), self.RBQ] + \
+            self.storage_wholesaler[
+                self.week_counter, self.ABQ]
+
+
+        # EI
+        self.storage_wholesaler[self.week_counter, self.EI] = calculateEI(
+            self.storage_wholesaler[self.week_counter, self.RBQ],
+            self.storage_wholesaler[self.week_counter, self.RQ],
+            self.storage_wholesaler[self.week_counter, self.PI],
+            self.storage_wholesaler[self.week_counter, self.ID])
+        # BO
+        self.storage_wholesaler[self.week_counter, self.BO] = calculateBO(
+            self.storage_wholesaler[self.week_counter, self.EI])
+
+        # Retailer
         # OQ
         self.storage_retailer[self.week_counter - 1, self.OQ] = predictions[0]
-        self.storage_wholesaler[self.week_counter - 1, self.OQ] = predictions[1]
-        self.storage_distributor[self.week_counter - 1, self.OQ] = predictions[2]
-        self.storage_factory[self.week_counter - 1, self.OQ] = predictions[3]
-
         # OOQ
         if self.week_counter == 1:
             self.storage_retailer[self.week_counter, self.OOQ] = 4 + self.storage_retailer[
                 self.week_counter - 1, self.OQ]
-            self.storage_wholesaler[self.week_counter, self.OOQ] = 4 + self.storage_wholesaler[
-                self.week_counter - 1, self.OQ]
-            self.storage_distributor[self.week_counter, self.OOQ] = 4 + self.storage_distributor[
-                self.week_counter - 1, self.OQ]
-            self.storage_factory[self.week_counter, self.OOQ] = 4 + self.storage_factory[self.week_counter - 1, self.OQ]
-
         # OOQ for future weeks
         for i in range(0, int(self.storage_retailer[self.week_counter - 1, self.DEL_LEAD_TIME]), 1):
             if self.week_counter + i == 1:
@@ -235,182 +436,52 @@ class supplychain_sim:
                                                                          self.week_counter + i, self.OOQ] + \
                                                                      self.storage_retailer[
                                                                          self.week_counter - 1, self.OQ]
-            self.storage_wholesaler[self.week_counter + i, self.OOQ] = self.storage_wholesaler[
-                                                                           self.week_counter + i, self.OOQ] + \
-                                                                       self.storage_wholesaler[
-                                                                           self.week_counter - 1, self.OQ]
-            self.storage_distributor[self.week_counter + i, self.OOQ] = self.storage_distributor[
-                                                                            self.week_counter + i, self.OOQ] + \
-                                                                        self.storage_distributor[
-                                                                            self.week_counter - 1, self.OQ]
-            self.storage_factory[self.week_counter + i, self.OOQ] = self.storage_factory[
-                                                                        self.week_counter + i, self.OOQ] + \
-                                                                    self.storage_factory[self.week_counter - 1, self.OQ]
-
-        # RO, WO, DO
-        self.storage_wholesaler[self.week_counter + self.order_lead_time, self.ID] = predictions[0]
-        self.storage_distributor[self.week_counter + self.order_lead_time, self.ID] = predictions[1]
-        self.storage_factory[self.week_counter + self.order_lead_time, self.ID] = predictions[2]
-
+        # ID
+        # Already set as demand for retailer
         # RQ (special case for 2nd week) modifying current week only if it's week 2
         if self.week_counter == 1:
             self.storage_retailer[self.week_counter, self.RQ] = 4 + self.storage_retailer[self.week_counter, self.RQ]
-            self.storage_wholesaler[self.week_counter, self.RQ] = 4 + self.storage_wholesaler[
-                self.week_counter, self.RQ]
-            self.storage_distributor[self.week_counter, self.RQ] = 4 + self.storage_distributor[
-                self.week_counter, self.RQ]
-            self.storage_factory[self.week_counter, self.RQ] = 4 + self.storage_factory[self.week_counter, self.RQ]
 
         # PI
         self.storage_retailer[self.week_counter, self.PI] = self.storage_retailer[self.week_counter - 1, self.EI]
-        self.storage_wholesaler[self.week_counter, self.PI] = self.storage_wholesaler[self.week_counter - 1, self.EI]
-        self.storage_distributor[self.week_counter, self.PI] = self.storage_distributor[self.week_counter - 1, self.EI]
-        self.storage_factory[self.week_counter, self.PI] = self.storage_factory[self.week_counter - 1, self.EI]
-
         # ED
         self.storage_retailer[self.week_counter, self.ED] = calculateED(self.alpha,
                                                                         self.storage_retailer[
                                                                             self.week_counter, self.ID],
                                                                         self.storage_retailer[
                                                                             self.week_counter - 1, self.ED])
-        self.storage_wholesaler[self.week_counter, self.ED] = calculateED(self.alpha,
-                                                                          self.storage_wholesaler[
-                                                                              self.week_counter, self.ID],
-                                                                          self.storage_wholesaler[
-                                                                              self.week_counter - 1, self.ED])
-        self.storage_distributor[self.week_counter, self.ED] = calculateED(self.alpha,
-                                                                           self.storage_distributor[
-                                                                               self.week_counter, self.ID],
-                                                                           self.storage_distributor[
-                                                                               self.week_counter - 1, self.ED])
-        self.storage_factory[self.week_counter, self.ED] = calculateED(self.alpha,
-                                                                       self.storage_factory[
-                                                                           self.week_counter, self.ID],
-                                                                       self.storage_factory[
-                                                                           self.week_counter - 1, self.ED])
-        # RQ for future weeks
-        self.storage_distributor[
-            self.week_counter + int(self.storage_retailer[self.week_counter - 1, self.DEL_LEAD_TIME]), self.RQ] = \
-            self.storage_distributor[
-                self.week_counter + int(self.storage_retailer[self.week_counter - 1, self.DEL_LEAD_TIME]), self.RQ] + \
-            self.storage_factory[
-                self.week_counter, self.AQ]
-        self.storage_wholesaler[
-            self.week_counter + int(self.storage_retailer[self.week_counter - 1, self.DEL_LEAD_TIME]), self.RQ] = \
-            self.storage_wholesaler[
-                self.week_counter + int(self.storage_retailer[self.week_counter - 1, self.DEL_LEAD_TIME]), self.RQ] + \
-            self.storage_distributor[
-                self.week_counter, self.AQ]
-        self.storage_retailer[
-            self.week_counter + int(self.storage_retailer[self.week_counter - 1, self.DEL_LEAD_TIME]), self.RQ] = \
-            self.storage_retailer[
-                self.week_counter + int(self.storage_retailer[self.week_counter - 1, self.DEL_LEAD_TIME]), self.RQ] + \
-            self.storage_wholesaler[
-                self.week_counter, self.AQ]
-        # RBQ for future weeks
-        self.storage_distributor[
-            self.week_counter + int(self.storage_retailer[self.week_counter - 1, self.DEL_LEAD_TIME]), self.RBQ] = \
-            self.storage_distributor[
-                self.week_counter + int(self.storage_retailer[self.week_counter - 1, self.DEL_LEAD_TIME]), self.RBQ] + \
-            self.storage_factory[
-                self.week_counter, self.ABQ]
-        self.storage_wholesaler[
-            self.week_counter + int(self.storage_retailer[self.week_counter - 1, self.DEL_LEAD_TIME]), self.RBQ] = \
-            self.storage_wholesaler[
-                self.week_counter + int(self.storage_retailer[self.week_counter - 1, self.DEL_LEAD_TIME]), self.RBQ] + \
-            self.storage_distributor[
-                self.week_counter, self.ABQ]
-        self.storage_retailer[
-            self.week_counter + int(self.storage_retailer[self.week_counter - 1, self.DEL_LEAD_TIME]), self.RBQ] = \
-            self.storage_retailer[
-                self.week_counter + int(self.storage_retailer[self.week_counter - 1, self.DEL_LEAD_TIME]), self.RBQ] + \
-            self.storage_wholesaler[
-                self.week_counter, self.ABQ]
-        # BI
+        # RQ from Factory for future weeks
+        # There is nothing downstream after retailer to set RQ
+        # RBQ from factory for future weeks
+        # There is nothing downstream after retailer to set RBQ
 
-        self.storage_distributor[self.week_counter, self.BI] = calculateBI(
-            self.storage_distributor[self.week_counter, self.RBQ],
-            self.storage_distributor[self.week_counter, self.RQ],
-            self.storage_distributor[self.week_counter, self.PI])
-        self.storage_wholesaler[self.week_counter, self.BI] = calculateBI(
-            self.storage_wholesaler[self.week_counter, self.RBQ],
-            self.storage_wholesaler[self.week_counter, self.RQ],
-            self.storage_wholesaler[self.week_counter, self.PI])
+        # BI
         self.storage_retailer[self.week_counter, self.BI] = calculateBI(
             self.storage_retailer[self.week_counter, self.RBQ],
             self.storage_retailer[self.week_counter, self.RQ],
             self.storage_retailer[self.week_counter, self.PI])
 
-
-
-        #ABQ
-        self.storage_factory[self.week_counter, self.ABQ] = calculateABQ(
-            self.storage_factory[self.week_counter, self.BI],
-            self.storage_factory[self.week_counter, self.PI])
-        self.storage_distributor[self.week_counter, self.ABQ] = calculateABQ(
-            self.storage_distributor[self.week_counter, self.BI],
-            self.storage_distributor[self.week_counter, self.PI])
-        self.storage_wholesaler[self.week_counter, self.ABQ] = calculateABQ(
-            self.storage_wholesaler[self.week_counter, self.BI],
-            self.storage_wholesaler[self.week_counter, self.PI])
+        # ABQ
         self.storage_retailer[self.week_counter, self.ABQ] = calculateABQ(
             self.storage_retailer[self.week_counter, self.BI],
             self.storage_retailer[self.week_counter, self.PI])
 
-
-        #AQ
-        self.storage_factory[self.week_counter, self.AQ] = calculateAQ(
-            self.storage_factory[self.week_counter, self.ID],
-            self.storage_factory[self.week_counter, self.BI],
-            self.storage_factory[self.week_counter, self.ABQ])
-        self.storage_distributor[self.week_counter, self.AQ] = calculateAQ(
-            self.storage_distributor[self.week_counter, self.ID],
-            self.storage_distributor[self.week_counter, self.BI],
-            self.storage_distributor[self.week_counter, self.ABQ])
-        self.storage_wholesaler[self.week_counter, self.AQ] = calculateAQ(
-            self.storage_wholesaler[self.week_counter, self.ID],
-            self.storage_wholesaler[self.week_counter, self.BI],
-            self.storage_wholesaler[self.week_counter, self.ABQ])
+        # AQ
         self.storage_retailer[self.week_counter, self.AQ] = calculateAQ(
             self.storage_retailer[self.week_counter, self.ID],
             self.storage_retailer[self.week_counter, self.BI],
             self.storage_retailer[self.week_counter, self.ABQ])
-
-
-
-        #EI
+        # EI
         self.storage_retailer[self.week_counter, self.EI] = calculateEI(
             self.storage_retailer[self.week_counter, self.RBQ],
             self.storage_retailer[self.week_counter, self.RQ],
             self.storage_retailer[self.week_counter, self.PI],
             self.storage_retailer[self.week_counter, self.ID])
-        self.storage_wholesaler[self.week_counter, self.EI] = calculateEI(
-            self.storage_wholesaler[self.week_counter, self.RBQ],
-            self.storage_wholesaler[self.week_counter, self.RQ],
-            self.storage_wholesaler[self.week_counter, self.PI],
-            self.storage_wholesaler[self.week_counter, self.ID])
-        self.storage_distributor[self.week_counter, self.EI] = calculateEI(
-            self.storage_distributor[self.week_counter, self.RBQ],
-            self.storage_distributor[self.week_counter, self.RQ],
-            self.storage_distributor[self.week_counter, self.PI],
-            self.storage_distributor[self.week_counter, self.ID])
-        self.storage_factory[self.week_counter, self.EI] = calculateEI(
-            self.storage_factory[self.week_counter, self.RBQ],
-            self.storage_factory[self.week_counter, self.RQ],
-            self.storage_factory[self.week_counter, self.PI],
-            self.storage_factory[self.week_counter, self.ID])
         # BO
         self.storage_retailer[self.week_counter, self.BO] = calculateBO(
             self.storage_retailer[self.week_counter, self.EI])
-        self.storage_wholesaler[self.week_counter, self.BO] = calculateBO(
-            self.storage_wholesaler[self.week_counter, self.EI])
-        self.storage_distributor[self.week_counter, self.BO] = calculateBO(
-            self.storage_distributor[self.week_counter, self.EI])
-        self.storage_factory[self.week_counter, self.BO] = calculateBO(
-            self.storage_factory[self.week_counter, self.EI])
-
-
-        return self.storage_retailer[:35], self.storage_wholesaler[:35], self.storage_distributor[:35], self.storage_factory[:35]
+        return self.storage_retailer[:35], self.storage_wholesaler[:35], self.storage_distributor[
+                                                                         :35], self.storage_factory[:35]
 
 
 default_demand = [15, 10, 8, 14, 9, 3, 13, 2, 13, 11, 3, 4, 6, 11, 15, 12, 15, 4, 12, 3, 13, 10, 15, 15, 3, 11, 1, 13,
@@ -433,11 +504,17 @@ pred = np.hstack((retailer['Unnamed: 11'].values[2:len(retailer['Unnamed: 11'].v
                   wholesaler['Unnamed: 11'].values[2:len(wholesaler['Unnamed: 11'].values) - 4].reshape(35, 1),
                   dist['Unnamed: 11'].values[2:len(dist['Unnamed: 11'].values) - 4].reshape(35, 1),
                   fact['Unnamed: 11'].values[2:len(fact['Unnamed: 11'].values) - 4].reshape(35, 1)))
-
 for prediction in pred:
+    # if sim.week_counter == 3:
+    #     break
     sim.step_one_week(prediction)
 
 print(["RBQ", "RQ", "PI", "BI", "ABQ", "ID", "ED", "AQ", "EI", "OOQ", "OQ", "BO", "LEAD_TIME"])
-print(sim.storage_retailer[:4])
+print("Retailer")
+print(sim.storage_retailer[:3])
 print("Wholesaler")
-print(sim.storage_wholesaler[:4])
+print(sim.storage_wholesaler[:3])
+print("Distributor")
+print(sim.storage_wholesaler[:3])
+print("Factory")
+print(sim.storage_wholesaler[:3])
