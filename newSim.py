@@ -203,21 +203,30 @@ class supplychain_sim:
             0, self.ABQ]
         self.storage_distributor[0 + 2, self.RBQ] = self.storage_distributor[0 + 2, self.RBQ] + self.storage_factory[
             0, self.ABQ]
+
+        # RQ of Factory
+        self.storage_factory[2, self.RQ] = 4
+        self.storage_distributor[2, self.RQ] = 4
         return self.storage_retailer, self.storage_wholesaler, self.storage_distributor, self.storage_factory
 
     def step_one_week(self, predictions):
         self.week_counter += 1
-        print("Current Week", self.week_counter)
         assert (len(predictions) == 4)
         # predictions = np.round(predictions)
-
         # Factory
         # OQ
         self.storage_factory[self.week_counter - 1, self.OQ] = predictions[3]
         # OOQ
         if self.week_counter == 1:
             self.storage_factory[self.week_counter, self.OOQ] = 4 + self.storage_factory[self.week_counter - 1, self.OQ]
+        # Updating RQ of Factory
+        # RQ of Factory for future weeks
 
+        self.storage_factory[
+            self.week_counter + int(self.storage_retailer[self.week_counter - 1, self.DEL_LEAD_TIME]), self.RQ] = \
+            self.storage_factory[
+                self.week_counter + int(self.storage_retailer[self.week_counter - 1, self.DEL_LEAD_TIME]), self.RQ] + \
+            self.storage_factory[self.week_counter - 1, self.OQ]
         # OOQ for future Weeks (if any)
         for i in range(0, int(self.storage_retailer[self.week_counter - 1, self.DEL_LEAD_TIME]), 1):
             if self.week_counter + i == 1:
@@ -225,6 +234,7 @@ class supplychain_sim:
             self.storage_factory[self.week_counter + i, self.OOQ] = self.storage_factory[
                                                                         self.week_counter + i, self.OOQ] + \
                                                                     self.storage_factory[self.week_counter - 1, self.OQ]
+
         # ID
         self.storage_factory[self.week_counter + self.order_lead_time, self.ID] = predictions[2]
         # RQ (special case for 2nd week) modifying current week only if it's week 2
@@ -253,6 +263,7 @@ class supplychain_sim:
             self.storage_factory[self.week_counter, self.ID],
             self.storage_factory[self.week_counter, self.BI],
             self.storage_factory[self.week_counter, self.ABQ])
+
         # RQ from Factory for future weeks
         self.storage_distributor[
             self.week_counter + int(self.storage_retailer[self.week_counter - 1, self.DEL_LEAD_TIME]), self.RQ] = \
@@ -267,6 +278,7 @@ class supplychain_sim:
                 self.week_counter + int(self.storage_retailer[self.week_counter - 1, self.DEL_LEAD_TIME]), self.RBQ] + \
             self.storage_factory[
                 self.week_counter, self.ABQ]
+
         # EI
         self.storage_factory[self.week_counter, self.EI] = calculateEI(
             self.storage_factory[self.week_counter, self.RBQ],
@@ -410,7 +422,6 @@ class supplychain_sim:
             self.storage_wholesaler[
                 self.week_counter, self.ABQ]
 
-
         # EI
         self.storage_wholesaler[self.week_counter, self.EI] = calculateEI(
             self.storage_wholesaler[self.week_counter, self.RBQ],
@@ -483,6 +494,69 @@ class supplychain_sim:
         return self.storage_retailer[:35], self.storage_wholesaler[:35], self.storage_distributor[
                                                                          :35], self.storage_factory[:35]
 
+    def total_cost(self):
+        self.total_cost_retailer = np.sum(np.maximum(
+            self.storage_retailer[
+            self.period_start - 1:self.period_stop, self.EI],0) * self.unit_holding_cost_retailer) + (np.sum(
+            self.storage_retailer[
+            self.period_start - 1:self.period_stop, self.BO] * self.unit_bo_cost_retailer))
+        print("Retailer Holding Cost:",np.sum(np.maximum(
+            self.storage_retailer[
+            self.period_start - 1:self.period_stop, self.EI],0) * self.unit_holding_cost_retailer))
+        print("Retailer BO cost: ",(np.sum(
+            self.storage_retailer[
+            self.period_start - 1:self.period_stop, self.BO] * self.unit_bo_cost_retailer)))
+        self.total_cost_wholesaler = np.sum(np.maximum(
+            self.storage_wholesaler[
+            self.period_start - 1:self.period_stop, self.EI],0) * self.unit_holding_cost_wholesaler) + (np.sum(
+            self.storage_wholesaler[
+            self.period_start - 1:self.period_stop, self.BO] * self.unit_bo_cost_wholesaler))
+        print("WholeSaler Holding Cost:", np.sum(np.maximum(
+            self.storage_wholesaler[
+            self.period_start - 1:self.period_stop, self.EI], 0) * self.unit_holding_cost_retailer))
+        print("WholeSaler BO cost: ", (np.sum(
+            self.storage_wholesaler[
+            self.period_start - 1:self.period_stop, self.BO] * self.unit_bo_cost_retailer)))
+
+        self.total_cost_distributor = np.sum(np.maximum(
+            self.storage_distributor[
+            self.period_start - 1:self.period_stop, self.EI],0) * self.unit_holding_cost_distributor) + (np.sum(
+            self.storage_distributor[
+            self.period_start - 1:self.period_stop, self.BO] * self.unit_bo_cost_distributor))
+        print("Distributor Holding Cost:", np.sum(np.maximum(
+            self.storage_distributor[
+            self.period_start - 1:self.period_stop, self.EI], 0) * self.unit_holding_cost_retailer))
+        print("Distributor BO cost: ", (np.sum(
+            self.storage_distributor[
+            self.period_start - 1:self.period_stop, self.BO] * self.unit_bo_cost_retailer)))
+
+        self.total_cost_factory = np.sum(np.maximum(
+            self.storage_factory[
+            self.period_start - 1:self.period_stop, self.EI],0) * self.unit_holding_cost_factory) + (np.sum(
+            self.storage_factory[
+            self.period_start - 1:self.period_stop, self.BO] * self.unit_bo_cost_factory))
+        print("Factory Holding Cost:", np.sum(np.maximum(
+            self.storage_factory[
+            self.period_start - 1:self.period_stop, self.EI], 0) * self.unit_holding_cost_retailer))
+        print("Factory BO cost: ", (np.sum(
+            self.storage_factory[
+            self.period_start - 1:self.period_stop, self.BO] * self.unit_bo_cost_retailer)))
+        return self.total_cost_retailer + self.total_cost_distributor+ self.total_cost_wholesaler + self.total_cost_factory
+
+    def save(self):
+        self.retailer_df = pd.DataFrame(np.round(self.storage_retailer),
+                                        columns=["RBQ", "RQ", "PI", "BI", "ABQ", "ID", "ED", "AQ", "EI", "OOQ", "OQ", "BO", "LEAD_TIME"])
+        self.wholesaler_df = pd.DataFrame(np.round(self.storage_wholesaler),
+                                          columns=["RBQ", "RQ", "PI", "BI", "ABQ", "ID", "ED", "AQ", "EI", "OOQ", "OQ", "BO", "LEAD_TIME"])
+        self.distributor_df = pd.DataFrame(np.round(self.storage_distributor),
+                                           columns=["RBQ", "RQ", "PI", "BI", "ABQ", "ID", "ED", "AQ", "EI", "OOQ", "OQ", "BO", "LEAD_TIME"])
+        self.factory_df = pd.DataFrame(np.round(self.storage_factory),
+                                       columns=["RBQ", "RQ", "PI", "BI", "ABQ", "ID", "ED", "AQ", "EI", "OOQ", "OQ", "BO", "LEAD_TIME"])
+        self.retailer_df.to_csv('retailer.csv')
+        self.wholesaler_df.to_csv('wholesaler.csv')
+        self.distributor_df.to_csv('distributor.csv')
+        self.factory_df.to_csv('factory.csv')
+
 
 default_demand = [15, 10, 8, 14, 9, 3, 13, 2, 13, 11, 3, 4, 6, 11, 15, 12, 15, 4, 12, 3, 13, 10, 15, 15, 3, 11, 1, 13,
                   10, 10, 0, 0, 8, 0, 14]
@@ -490,10 +564,6 @@ delivery_lead_time = [2, 0, 2, 4, 4, 4, 0, 2, 4, 1, 1, 0, 0, 1, 1, 0, 1, 1, 2, 1
                       3, 4]
 sim = supplychain_sim()
 state = sim.reset(default_demand, delivery_lead_time)
-# print(["RBQ", "RQ", "PI", "BI", "ABQ", "ID", "ED", "AQ", "EI", "OOQ", "OQ", "BO", "LEAD_TIME"])
-# print(state[0][0])
-# print("Stepping One Week")
-# print(sim.step_one_week([15, 4, 4, 4])[3][:])
 
 retailer = pd.read_excel('DATA.xlsx', sheet_name='Retailer')
 wholesaler = pd.read_excel('DATA.xlsx', sheet_name='Wholesaler')
@@ -505,16 +575,9 @@ pred = np.hstack((retailer['Unnamed: 11'].values[2:len(retailer['Unnamed: 11'].v
                   dist['Unnamed: 11'].values[2:len(dist['Unnamed: 11'].values) - 4].reshape(35, 1),
                   fact['Unnamed: 11'].values[2:len(fact['Unnamed: 11'].values) - 4].reshape(35, 1)))
 for prediction in pred:
-    # if sim.week_counter == 3:
-    #     break
     sim.step_one_week(prediction)
 
 print(["RBQ", "RQ", "PI", "BI", "ABQ", "ID", "ED", "AQ", "EI", "OOQ", "OQ", "BO", "LEAD_TIME"])
-print("Retailer")
-print(sim.storage_retailer[:3])
-print("Wholesaler")
-print(sim.storage_wholesaler[:3])
-print("Distributor")
-print(sim.storage_wholesaler[:3])
-print("Factory")
-print(sim.storage_wholesaler[:3])
+print(sim.total_cost())
+
+sim.save()
