@@ -50,10 +50,10 @@ class supplychain_sim:
         self.unit_holding_cost_wholesaler = 4
         self.unit_holding_cost_distributor = 3
         self.unit_holding_cost_factory = 1
-        self.unit_bo_cost_retailer = 10
-        self.unit_bo_cost_wholesaler = 8
-        self.unit_bo_cost_distributor = 6
-        self.unit_bo_cost_factory = 2
+        self.unit_ls_cost_retailer = 10
+        self.unit_ls_cost_wholesaler = 8
+        self.unit_ls_cost_distributor = 6
+        self.unit_ls_cost_factory = 2
         self.period_start = 4
         self.period_stop = 22
 
@@ -355,6 +355,24 @@ class supplychain_sim:
             self.storage_retailer[self.week_counter, self.BI],
             self.storage_retailer[self.week_counter, self.AQ])
 
+    def total_cost(self):
+        self.total_cost_retailer = np.sum(
+            self.storage_retailer[self.period_start - 1:self.period_stop,
+                                  self.EI] * self.unit_holding_cost_retailer) + np.sum(
+            self.storage_retailer[self.period_start - 1:self.period_stop, self.LS] * self.unit_ls_cost_retailer)
+        self.total_cost_wholesaler = np.sum(self.storage_wholesaler[self.period_start - 1:self.period_stop,
+                                            self.EI] * self.unit_holding_cost_wholesaler) + np.sum(
+            self.storage_wholesaler[self.period_start - 1:self.period_stop, self.LS] * self.unit_ls_cost_wholesaler)
+        self.total_cost_distributor = np.sum(self.storage_distributor[self.period_start - 1:self.period_stop,
+                                             self.EI] * self.unit_holding_cost_distributor) + np.sum(
+            self.storage_distributor[self.period_start - 1:self.period_stop, self.LS] * self.unit_ls_cost_distributor)
+        self.total_cost_factory = np.sum(self.storage_factory[self.period_start - 1:self.period_stop,
+                                         self.EI] * self.unit_holding_cost_factory) + np.sum(
+            self.storage_factory[self.period_start - 1:self.period_stop, self.LS] * self.unit_ls_cost_factory)
+
+        return ((
+            self.total_cost_retailer, self.total_cost_wholesaler, self.total_cost_distributor, self.total_cost_factory))
+
 
 default_demand = [82, 73, 92, 85, 90, 74, 83, 79, 85, 83, 91, 57, 72, 87, 77, 69, 74, 91, 84, 67, 101, 82, 72, 83, 97]
 delivery_lead_time = [2, 0, 2, 4, 4, 4, 0, 2, 4, 1, 1, 0, 0, 1, 1, 0, 1, 1, 2, 1, 1, 1, 4, 2, 2]
@@ -390,4 +408,4 @@ for prediction in pred:
 
 print(["RQ", "PI", "BI", "ID", "ED", "AQ", "EI", "OOQ", "OQ", "LS", "LEAD_TIME"])
 
-print(sim.storage_factory)
+print(sim.total_cost())
